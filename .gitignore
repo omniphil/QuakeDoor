@@ -1,0 +1,8 @@
+# built or downloaded, never committed
+module/obj/
+module/quake.wasm
+door/*.o
+door/quakedoor
+door/quake-shareware.zip
+door/saves/
+data/
