@@ -4,7 +4,7 @@ CC = gcc
 CFLAGS = -Wall -Wextra -std=c11 -O2
 LDFLAGS =
 
-OBJ = main.o door.o trace_quake.o files.o sha256.o
+OBJ = main.o door.o trace_quake.o trace_door.o files.o sha256.o
 
 quakedoor: $(OBJ)
 	$(CC) $(OBJ) -o $@ $(LDFLAGS)

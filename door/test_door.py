@@ -38,6 +38,31 @@ EXISTING_CFG = b'bind "TAB" "+showscores"\n' * 300
 EXISTING_SAVE = b'5\nE1M1_kills:__3/12_____\n0.000000\n' + b'1.000000\n' * 4000
 
 
+BINARY = '--bin' in sys.argv   # a TERMinator with binary frames (bin=1): uploads and messages without base64
+if BINARY:
+    INFO += ';bin=1'
+
+
+def unescape(data):
+    """A binary frame's bytes back: '=' then the byte + 64 stands for one byte (trace_door.c)."""
+    out, it = bytearray(), iter(data)
+    for b in it:
+        out.append((next(it, 64) - 64) & 0xFF if b == 0x3D else b)
+    return bytes(out)
+
+
+def bin_frame(header, payload=b''):
+    """A binary frame the way TERMinator writes one to the door: every control byte escaped (the door reads through
+    a pseudo-terminal, as here), and '=', DEL and 0xFF."""
+    out = bytearray(b'\x1b_TERMinator:TRACE;Bin;')
+    for b in header.encode() + b'\n' + payload:
+        if b < 0x20 or b in (0x3D, 0x7F, 0xFF):
+            out += bytes((0x3D, (b + 64) & 0xFF))
+        else:
+            out.append(b)
+    return bytes(out) + b'\x1b\\'
+
+
 def sha256_file(path):
     return hashlib.sha256(open(path, 'rb').read()).hexdigest()
 
@@ -66,7 +91,7 @@ class FakeTerminal:
     def reply(self, fd, text):
         os.write(fd, (APC + text + ST).encode())
 
-    def handle(self, fd, command):
+    def handle(self, fd, command, raw=None):
         verb = command.split(';')[0]
         args = fields(command)
 
@@ -89,7 +114,7 @@ class FakeTerminal:
                 self.reply(fd, f'TERMinator:TRACE;Need;module=quake;wasm={key}')
         elif verb == 'Put':
             key = args.get('asset') or 'module:' + next(k[7:] for k in self.uploads if k.startswith('module:'))
-            chunk = base64.b64decode(args['data'])
+            chunk = raw if raw is not None else base64.b64decode(args['data'])
             assert int(args['offset']) == len(self.uploads[key]), 'chunks arrived out of order'
             self.uploads[key] += chunk
         elif verb == 'PutDone':
@@ -111,9 +136,9 @@ class FakeTerminal:
                 time.sleep(0.2)
                 self.play(fd)
                 self.reply(fd, 'TERMinator:TRACE;Closed;module=quake;code=0')
-            elif 'b64' in args:
+            elif 'b64' in args or raw is not None:
                 # Something the door sent the game: one of the player's files, a piece at a time
-                message = base64.b64decode(args['b64'])
+                message = raw if raw is not None else base64.b64decode(args['b64'])
                 head = message.split(b'\n', 1)[0].decode('latin-1')
                 body = message.split(b'\n', 1)[1] if b'\n' in message else b''
                 if head.startswith('list'):
@@ -132,7 +157,10 @@ class FakeTerminal:
     def module_says(self, fd, head, payload=b''):
         """Pretends to be the game talking to the door, which TERMinator relays as base64."""
         message = head.encode() + (b'\n' + payload if payload else b'')
-        self.reply(fd, 'TERMinator:TRACE;Data;module=quake;b64=' + base64.b64encode(message).decode())
+        if BINARY:
+            os.write(fd, bin_frame('Data;module=quake', message))
+        else:
+            self.reply(fd, 'TERMinator:TRACE;Data;module=quake;b64=' + base64.b64encode(message).decode())
 
     def play(self, fd):
         """The player loads a save, saves another, and quits."""
@@ -175,7 +203,12 @@ class FakeTerminal:
             self.screen += self.buffer[:start]
             command = self.buffer[start + 2:end]
             self.buffer = self.buffer[end + 2:]
-            if command.startswith('TERMinator:TRACE;'):
+            if command.startswith('TERMinator:TRACE;Bin;'):
+                # A header line, then the raw payload (a Put chunk, or a message for the game)
+                self.binary_frames = getattr(self, 'binary_frames', 0) + 1
+                header, _, raw = unescape(command[len('TERMinator:TRACE;Bin;'):].encode('latin-1')).partition(b'\n')
+                self.handle(fd, header.decode('ascii'), raw)
+            elif command.startswith('TERMinator:TRACE;'):
                 self.handle(fd, command[len('TERMinator:TRACE;'):])
 
 
@@ -264,6 +297,11 @@ def main():
     assert not any('evil' in n for root, _, names in os.walk(os.path.join(HERE, '..')) for n in names), \
         'the door wrote a file it should never accept'
     print('PASS: a save with a missing piece was refused, and an unknown file name was ignored')
+
+    if BINARY:
+        frames = getattr(terminal, 'binary_frames', 0)
+        assert frames > 0, 'bin=1 was offered but the door never sent a binary frame'
+        print(f'PASS: binary frames used ({frames}): uploads and messages without base64')
 
 
 def prepare():
