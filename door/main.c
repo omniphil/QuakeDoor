@@ -36,7 +36,8 @@ static void title(void)
     door_write(CSI "1;31m"
                "        ===============================================\r\n"
                "              Q U A K E   -   shareware episode\r\n"
-               "        ===============================================\r\n" CSI "0m\r\n");
+               "        ===============================================\r\n" CSI "0m");
+    door_write(CSI "1;34m" "                    BBS door by JSONBourne\r\n" CSI "0m" "\r\n");
 }
 
 /* The name in its own colours, the way the client writes it: TERM in magenta, inator in cyan. */
@@ -204,6 +205,7 @@ int main(int argc, char *argv[])
 
     cls();
     door_write(CSI "1;31m\r\n  Thanks for playing QUAKE.\r\n\r\n" CSI "0m");
+    door_write(CSI "1;34m" "  BBS door by JSONBourne\r\n\r\n" CSI "0m");
 
     /* The player has just been sent a GPL-2 program, so this is where they're told where its source is: on the way
      * in it would flash past, because the game takes over the screen a moment later. */
