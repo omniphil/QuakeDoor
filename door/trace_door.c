@@ -319,10 +319,16 @@ static int handle_reply(char *buf, size_t n)
 
 int tdoor_wait_reply(int timeout_ms)
 {
+    /*
+     * The parser's state lives across calls, not just the buffer. A message from the module can still be arriving
+     * when a call's time runs out -- half of it read, the rest on its way -- and the next call has to carry on from
+     * there. With the state reset per call (as it was before 2026-09-21), the tail was taken for noise and the whole
+     * message silently lost: a save, a post, a move. Short timeouts in a busy loop made it common.
+     */
     static char *buf;
-    size_t n = 0;
-    int prev = -1;
-    bool in_apc = false;
+    static size_t n;
+    static int prev = -1;
+    static bool in_apc;
     long deadline = now_ms() + timeout_ms;
 
     if (buf == NULL && (buf = (char *)malloc(REPLY_MAX + 1)) == NULL)
