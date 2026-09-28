@@ -77,7 +77,7 @@ static int name_index(const char *name)
  * A folder name for this player: their handle, plus the BBS's own user number.
  *
  * The handle alone isn't enough to tell two people apart, because cutting it down to plain characters can make two
- * different handles the same ("Phil" and "P.h.i.l" both become "phil"). The user number is unique on the board, so
+ * different handles the same ("User" and "U.s.e.r" both become "user"). The user number is unique on the board, so
  * the two together can't collide. Cutting the handle down also means it can only ever name a folder inside saves/.
  */
 void files_init(const char *player, int user_number)
